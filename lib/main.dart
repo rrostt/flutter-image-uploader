@@ -9,10 +9,12 @@ import 'package:camera/camera.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 List<CameraDescription> cameras;
 
-final presignedUrlApi = YOUR_URL_HERE;
+final presignedUrlApi =
+    "https://l05c34qtnh.execute-api.eu-north-1.amazonaws.com/dev/generatePresignedUrl";
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,9 +34,21 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
   bool uploading = false;
   bool uploadingError = false;
 
+  TextEditingController plantIdController;
+
+  Timer timer;
+
   @override
   void initState() {
     super.initState();
+    plantIdController = TextEditingController();
+
+    plantIdController.addListener(() async {
+      var prefs = await SharedPreferences.getInstance();
+      await prefs.setString('plantId', plantIdController.text);
+    });
+    initPlantId();
+
     rotationController = AnimationController(
       duration: Duration(milliseconds: 5000),
       vsync: this,
@@ -49,7 +63,7 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
         }
         setState(() {});
         await Future.delayed(Duration(seconds: 5));
-        repeatadlyUploadPic();
+        // repeatadlyUploadPic();
       });
     }
   }
@@ -60,10 +74,19 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  void initPlantId() async {
+    var prefs = await SharedPreferences.getInstance();
+    plantIdController.text = prefs.getString('plantId');
+  }
+
   Future<String> getPostUrl() async {
+    var data = {"fileType": ".png"};
+    if (plantIdController.text != null && plantIdController.text.isNotEmpty) {
+      data['plantId'] = plantIdController.text;
+    }
     var response = await http.post('$presignedUrlApi',
         headers: <String, String>{"Content-Type": "application/json"},
-        body: jsonEncode({"fileType": ".png"}));
+        body: jsonEncode(data));
     var obj = jsonDecode(response.body);
     return obj['uploadUrl'];
   }
@@ -113,6 +136,7 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
         });
       }
     } catch (e) {
+      print(e);
       setState(() {
         uploading = false;
         uploadingError = true;
@@ -123,6 +147,7 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
   void repeatadlyUploadPic() async {
     takeAndUploadPicture();
     await Future.delayed(Duration(minutes: 15));
+    repeatadlyUploadPic();
   }
 
   @override
@@ -138,6 +163,20 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
         body: _body(context),
       ),
     );
+  }
+
+  void startTimer() {
+    timer = Timer.periodic(Duration(minutes: 15), (timer) {
+      takeAndUploadPicture();
+    });
+    setState(() {});
+    takeAndUploadPicture();
+  }
+
+  void stopTimer() {
+    if (timer != null) timer.cancel();
+    timer = null;
+    setState(() {});
   }
 
   Widget _body(BuildContext context) {
@@ -168,6 +207,19 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              timer != null
+                  ? IconButton(
+                      icon: Icon(Icons.pause),
+                      onPressed: () {
+                        stopTimer();
+                      },
+                    )
+                  : IconButton(
+                      icon: Icon(Icons.play_arrow),
+                      onPressed: () {
+                        startTimer();
+                      },
+                    ),
               RaisedButton(
                 onPressed: () {
                   takeAndUploadPicture();
@@ -177,6 +229,10 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
               if (uploading) CircularProgressIndicator(),
               if (uploadingError) Icon(Icons.error),
             ],
+          ),
+          TextField(
+            controller: plantIdController,
+            decoration: InputDecoration(hintText: 'Plant ID'),
           ),
         ],
       ),
