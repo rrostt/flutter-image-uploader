@@ -6,21 +6,99 @@ import 'dart:typed_data';
 import 'package:compressimage/compressimage.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:gurkapp/models/auth.dart';
+import 'package:gurkapp/services/api.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+
+import 'package:google_sign_in/google_sign_in.dart';
+
+GoogleSignIn _googleSignIn = GoogleSignIn(
+  clientId:
+      '804478743579-a5999sgljs52e98i57p1i7u2v889nt8b.apps.googleusercontent.com',
+  scopes: [
+    'email',
+  ],
+);
 
 List<CameraDescription> cameras;
-
-final presignedUrlApi =
-    "https://l05c34qtnh.execute-api.eu-north-1.amazonaws.com/dev/generatePresignedUrl";
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   cameras = await availableCameras();
-  runApp(CameraApp());
+
+  AuthModel authModel = AuthModel();
+
+  runApp(MultiProvider(
+    providers: [
+      ChangeNotifierProvider<AuthModel>(create: (context) => authModel),
+    ],
+    child: Consumer<AuthModel>(
+      builder: (context, auth, child) =>
+          auth.token != null ? CameraApp() : SignIn(),
+    ),
+  ));
+}
+
+class SignIn extends StatelessWidget {
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            RaisedButton(
+              onPressed: () async {
+                try {
+                  var x = await _googleSignIn.signIn();
+                  var auth = await x.authentication;
+
+                  var token = await fetchToken(auth.idToken);
+
+                  Provider.of<AuthModel>(context, listen: false)
+                      .setToken(token);
+                } catch (e) {
+                  print(e);
+                  print('unable to signin');
+                }
+              },
+              child: Text('login'),
+            )
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class SelectStream extends StatelessWidget {
+  final String value;
+  final void Function(String) onChanged;
+  SelectStream({this.value, @required this.onChanged});
+
+  Widget build(context) {
+    return Consumer<AuthModel>(
+      builder: (context, auth, _) => FutureBuilder(
+        future: fetchStreams(token: auth.token),
+        builder: (context, snapshot) =>
+            snapshot.hasData ? _streamSelect(snapshot.data) : Text('loading'),
+      ),
+    );
+  }
+
+  Widget _streamSelect(List<Stream> streams) {
+    return DropdownButton(
+      items: streams
+          .map((stream) =>
+              DropdownMenuItem(child: Text(stream.title), value: stream.id))
+          .toList(),
+      onChanged: onChanged,
+      value: value,
+    );
+  }
 }
 
 class CameraApp extends StatefulWidget {
@@ -33,21 +111,22 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
   AnimationController rotationController;
   bool uploading = false;
   bool uploadingError = false;
+  String streamId;
 
-  TextEditingController plantIdController;
+  // TextEditingController plantIdController;
 
   Timer timer;
 
   @override
   void initState() {
     super.initState();
-    plantIdController = TextEditingController();
+    // plantIdController = TextEditingController();
 
-    plantIdController.addListener(() async {
-      var prefs = await SharedPreferences.getInstance();
-      await prefs.setString('plantId', plantIdController.text);
-    });
-    initPlantId();
+    // plantIdController.addListener(() async {
+    //   var prefs = await SharedPreferences.getInstance();
+    //   await prefs.setString('plantId', plantIdController.text);
+    // });
+    // initPlantId();
 
     rotationController = AnimationController(
       duration: Duration(milliseconds: 5000),
@@ -74,22 +153,10 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  void initPlantId() async {
-    var prefs = await SharedPreferences.getInstance();
-    plantIdController.text = prefs.getString('plantId');
-  }
-
-  Future<String> getPostUrl() async {
-    var data = {"fileType": ".png"};
-    if (plantIdController.text != null && plantIdController.text.isNotEmpty) {
-      data['plantId'] = plantIdController.text;
-    }
-    var response = await http.post('$presignedUrlApi',
-        headers: <String, String>{"Content-Type": "application/json"},
-        body: jsonEncode(data));
-    var obj = jsonDecode(response.body);
-    return obj['uploadUrl'];
-  }
+  // void initPlantId() async {
+  //   var prefs = await SharedPreferences.getInstance();
+  //   plantIdController.text = prefs.getString('plantId');
+  // }
 
   void takeAndUploadPicture() async {
     print('taking and posting');
@@ -108,7 +175,7 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
 
     print('got bytes');
     try {
-      var postUrl = await getPostUrl();
+      var postUrl = await getUploadUrl(streamId);
 
       print(postUrl);
 
@@ -230,9 +297,13 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
               if (uploadingError) Icon(Icons.error),
             ],
           ),
-          TextField(
-            controller: plantIdController,
-            decoration: InputDecoration(hintText: 'Plant ID'),
+          SelectStream(
+            value: streamId,
+            onChanged: (value) {
+              setState(() {
+                streamId = value;
+              });
+            },
           ),
         ],
       ),
