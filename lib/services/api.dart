@@ -45,13 +45,16 @@ Future<List<Stream>> fetchStreams({token}) async {
   return array.map<Stream>((obj) => Stream.fromJson(obj)).toList();
 }
 
-Future<String> getUploadUrl(streamId) async {
+Future<String> getUploadUrl({token, streamId}) async {
   var data = {"fileType": ".png"};
   if (streamId != null && streamId.isNotEmpty) {
     data['streamId'] = streamId;
   }
   var response = await http.post('$uploadUrl',
-      headers: <String, String>{"Content-Type": "application/json"},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
       body: jsonEncode(data));
   var obj = jsonDecode(response.body);
   return obj['uploadUrl'];

@@ -107,11 +107,12 @@ class CameraApp extends StatefulWidget {
 }
 
 class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
-  CameraController controller;
+  CameraController cameraController;
   AnimationController rotationController;
   bool uploading = false;
   bool uploadingError = false;
   String streamId;
+  String token;
 
   // TextEditingController plantIdController;
 
@@ -120,13 +121,7 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    // plantIdController = TextEditingController();
-
-    // plantIdController.addListener(() async {
-    //   var prefs = await SharedPreferences.getInstance();
-    //   await prefs.setString('plantId', plantIdController.text);
-    // });
-    // initPlantId();
+    initStreamId();
 
     rotationController = AnimationController(
       duration: Duration(milliseconds: 5000),
@@ -135,28 +130,36 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
     );
     rotationController.repeat();
     if (cameras.length > 0) {
-      controller = CameraController(cameras[0], ResolutionPreset.veryHigh);
-      controller.initialize().then((_) async {
+      cameraController =
+          CameraController(cameras[0], ResolutionPreset.veryHigh);
+      cameraController.initialize().then((_) async {
         if (!mounted) {
           return;
         }
         setState(() {});
         await Future.delayed(Duration(seconds: 5));
-        // repeatadlyUploadPic();
       });
     }
   }
 
   @override
   void dispose() {
-    controller?.dispose();
+    cameraController?.dispose();
     super.dispose();
   }
 
-  // void initPlantId() async {
-  //   var prefs = await SharedPreferences.getInstance();
-  //   plantIdController.text = prefs.getString('plantId');
-  // }
+  void initStreamId() async {
+    var prefs = await SharedPreferences.getInstance();
+    streamId = prefs.getString('streamId');
+  }
+
+  void setStreamId(String value) async {
+    setState(() {
+      streamId = value;
+    });
+    var prefs = await SharedPreferences.getInstance();
+    await prefs.setString('streamId', streamId);
+  }
 
   void takeAndUploadPicture() async {
     print('taking and posting');
@@ -168,14 +171,14 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
       (await getTemporaryDirectory()).path,
       '${DateTime.now()}.png',
     );
-    await controller.takePicture(path);
+    await cameraController.takePicture(path);
     await CompressImage.compress(imageSrc: path, desiredQuality: 80);
 
     Uint8List bytes = File(path).readAsBytesSync();
 
     print('got bytes');
     try {
-      var postUrl = await getUploadUrl(streamId);
+      var postUrl = await getUploadUrl(streamId: streamId, token: token);
 
       print(postUrl);
 
@@ -219,6 +222,7 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    token = Provider.of<AuthModel>(context, listen: false).token;
     return MaterialApp(
       title: 'Gurka',
       theme: ThemeData(
@@ -226,7 +230,15 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: Scaffold(
-        appBar: AppBar(title: Text('Gurkor')),
+        appBar: AppBar(title: Text('Gurkor'), actions: [
+          FlatButton(
+            child: Text('logout'),
+            onPressed: () {
+              Provider.of<AuthModel>(context, listen: false).setToken(null);
+              setStreamId(null);
+            },
+          ),
+        ]),
         body: _body(context),
       ),
     );
@@ -247,7 +259,7 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
   }
 
   Widget _body(BuildContext context) {
-    if (controller == null || !controller.value.isInitialized) {
+    if (cameraController == null || !cameraController.value.isInitialized) {
       return Container(
         padding: EdgeInsets.all(20),
         child: Column(
@@ -265,10 +277,23 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Select stream'),
+              SizedBox(width: 20),
+              SelectStream(
+                value: streamId,
+                onChanged: (value) {
+                  setStreamId(value);
+                },
+              ),
+            ],
+          ),
           Expanded(
             child: AspectRatio(
-              aspectRatio: controller.value.aspectRatio,
-              child: CameraPreview(controller),
+              aspectRatio: cameraController.value.aspectRatio,
+              child: CameraPreview(cameraController),
             ),
           ),
           Row(
@@ -277,33 +302,31 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
               timer != null
                   ? IconButton(
                       icon: Icon(Icons.pause),
-                      onPressed: () {
-                        stopTimer();
-                      },
+                      onPressed: streamId == null
+                          ? null
+                          : () {
+                              stopTimer();
+                            },
                     )
                   : IconButton(
                       icon: Icon(Icons.play_arrow),
-                      onPressed: () {
-                        startTimer();
-                      },
+                      onPressed: streamId == null
+                          ? null
+                          : () {
+                              startTimer();
+                            },
                     ),
               RaisedButton(
-                onPressed: () {
-                  takeAndUploadPicture();
-                },
+                onPressed: streamId == null
+                    ? null
+                    : () {
+                        takeAndUploadPicture();
+                      },
                 child: Text('take pic'),
               ),
               if (uploading) CircularProgressIndicator(),
               if (uploadingError) Icon(Icons.error),
             ],
-          ),
-          SelectStream(
-            value: streamId,
-            onChanged: (value) {
-              setState(() {
-                streamId = value;
-              });
-            },
           ),
         ],
       ),
