@@ -32,6 +32,7 @@ Future<void> main() async {
   cameras = await availableCameras();
 
   AuthModel authModel = AuthModel();
+  await authModel.init();
 
   runApp(MultiProvider(
     providers: [
@@ -130,12 +131,12 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
     );
     rotationController.repeat();
     if (cameras.length > 0) {
-      cameraController =
-          CameraController(cameras[0], ResolutionPreset.veryHigh);
+      cameraController = CameraController(cameras[0], ResolutionPreset.high);
       cameraController.initialize().then((_) async {
         if (!mounted) {
           return;
         }
+        cameraController.setFlashMode(FlashMode.off);
         setState(() {});
         await Future.delayed(Duration(seconds: 5));
       });
@@ -167,14 +168,14 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
       uploading = true;
     });
 
-    String path = join(
-      (await getTemporaryDirectory()).path,
-      '${DateTime.now()}.png',
-    );
-    await cameraController.takePicture(path);
-    await CompressImage.compress(imageSrc: path, desiredQuality: 80);
+    // String path = join(
+    //   (await getTemporaryDirectory()).path,
+    //   '${DateTime.now()}.png',
+    // );
+    var file = await cameraController.takePicture();
+    await CompressImage.compress(imageSrc: file.path, desiredQuality: 50);
 
-    Uint8List bytes = File(path).readAsBytesSync();
+    Uint8List bytes = File(file.path).readAsBytesSync();
 
     print('got bytes');
     try {
@@ -291,10 +292,7 @@ class _CameraAppState extends State<CameraApp> with TickerProviderStateMixin {
             ],
           ),
           Expanded(
-            child: AspectRatio(
-              aspectRatio: cameraController.value.aspectRatio,
-              child: CameraPreview(cameraController),
-            ),
+            child: CameraPreview(cameraController),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
