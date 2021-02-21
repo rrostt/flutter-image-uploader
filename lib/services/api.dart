@@ -20,14 +20,19 @@ class Stream {
   final String id;
   final String title;
   final String description;
+  final String latestUrl;
+  final String latestTime;
 
-  Stream({this.id, this.title, this.description});
+  Stream(
+      {this.id, this.title, this.description, this.latestUrl, this.latestTime});
 
   factory Stream.fromJson(Map<String, dynamic> json) {
     return Stream(
       id: json['id'],
       title: json['title'],
       description: json['description'],
+      latestUrl: json['latest'] != null ? json['latest']['url'] : null,
+      latestTime: json['latest'] != null ? json['latest']['time'] : null,
     );
   }
 }

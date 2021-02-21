@@ -1,4 +1,4 @@
-package com.example.gurkapp
+package com.slowtok.streamer
 
 import io.flutter.embedding.android.FlutterActivity
 
