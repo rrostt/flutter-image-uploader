@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
 import 'package:compressimage/compressimage.dart';
 import 'package:flutter/material.dart';
@@ -43,7 +44,11 @@ class _StreamerPageState extends State<StreamerPage>
     );
     rotationController.repeat();
     if (cameras.length > 0) {
-      cameraController = CameraController(cameras[0], ResolutionPreset.high);
+      cameraController = CameraController(
+        cameras[0],
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
       cameraController.initialize().then((_) async {
         if (!mounted) {
           return;
@@ -140,6 +145,10 @@ class _StreamerPageState extends State<StreamerPage>
     });
 
     var file = await cameraController.takePicture();
+    final img.Image capturedImage = img.decodeImage(await file.readAsBytes());
+    final img.Image orientedImage = img.bakeOrientation(capturedImage);
+    await File(file.path).writeAsBytes(img.encodeJpg(orientedImage));
+
     await CompressImage.compress(imageSrc: file.path, desiredQuality: 50);
 
     Uint8List bytes = File(file.path).readAsBytesSync();
