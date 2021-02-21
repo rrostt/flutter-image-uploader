@@ -1,7 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-final apiBase = 'https://l05c34qtnh.execute-api.eu-north-1.amazonaws.com/dev';
+final apiBase = 'https://api.slowtok.com';
 // final presignedUrlApi = "$apiBase/generatePresignedUrl";
 final uploadUrl = '$apiBase/uploadUrl';
 final fetchAuthTokenUrl = '$apiBase/token';
